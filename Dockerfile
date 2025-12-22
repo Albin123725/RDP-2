@@ -43,7 +43,8 @@ RUN mkdir -p /root/.vnc && \
     chmod 600 /root/.vnc/passwd
 
 # Create optimized xstartup with memory-saving options
-RUN echo '#!/bin/bash
+RUN cat > /root/.vnc/xstartup << 'EOF'
+#!/bin/bash
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
 [ -x /etc/vnc/xstartup ] && exec /etc/vnc/xstartup
@@ -60,8 +61,10 @@ xfdesktop &
 vncconfig -iconic &
 # Set low memory usage policies
 echo 1 > /proc/sys/vm/overcommit_memory
-echo 3 > /proc/sys/vm/drop_caches' > /root/.vnc/xstartup && \
-    chmod +x /root/.vnc/xstartup
+echo 3 > /proc/sys/vm/drop_caches
+EOF
+
+RUN chmod +x /root/.vnc/xstartup
 
 # Get noVNC
 RUN wget -q https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz -O /tmp/novnc.tar.gz && \
@@ -74,15 +77,18 @@ RUN wget -q https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz -O /t
     rm /tmp/websockify.tar.gz
 
 # Create cleanup script for periodic memory management
-RUN echo '#!/bin/bash
+RUN cat > /cleanup.sh << 'EOF'
+#!/bin/bash
 while true; do
     # Clear cache every 5 minutes
     echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
     # Kill any zombie processes
     ps aux | grep "defunct" | grep -v grep | awk "{print \$2}" | xargs -r kill -9 2>/dev/null || true
     sleep 300
-done' > /cleanup.sh && \
-    chmod +x /cleanup.sh
+done
+EOF
+
+RUN chmod +x /cleanup.sh
 
 EXPOSE 10000
 
