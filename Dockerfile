@@ -1,14 +1,15 @@
 FROM ubuntu:22.04
 
 # Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive \
-    TZ=Asia/Kolkata \
-    USER=root \
-    HOME=/root \
-    DISPLAY=:1 \
-    VNC_PASSWD=password123 \
-    VNC_RESOLUTION=1280x720 \
-    VNC_DEPTH=16  # Reduced from 24 to save memory
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Kolkata
+ENV USER=root
+ENV HOME=/root
+ENV DISPLAY=:1
+ENV VNC_PASSWD=password123
+ENV VNC_RESOLUTION=1280x720
+# Reduced from 24 to save memory
+ENV VNC_DEPTH=16
 
 # Set timezone
 RUN ln -fs /usr/share/zoneinfo/Asia/Kolkata /etc/localtime && \
@@ -17,7 +18,7 @@ RUN ln -fs /usr/share/zoneinfo/Asia/Kolkata /etc/localtime && \
 # Install minimal required packages and clean up aggressively
 RUN apt update && apt install -y \
     xfce4 \
-    xfce4-goodiles \
+    xfce4-goodies \
     tightvncserver \
     novnc \
     websockify \
