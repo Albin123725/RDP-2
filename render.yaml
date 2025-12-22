@@ -1,13 +1,15 @@
 services:
   - type: web
-    name: novnc-desktop
+    name: vnc-desktop
     env: docker
     dockerfilePath: ./Dockerfile
     plan: free
-    envVars:
-      - key: VNC_PASSWORD
-        value: "your_secure_password_here"
-      - key: VNC_RESOLUTION
-        value: "1280x720"
-    healthCheckPath: /
     autoDeploy: true
+    healthCheckPath: /vnc_lite.html
+    envVars:
+      - key: VNC_RESOLUTION
+        value: "1024x576"  # Even lower for free tier
+      - key: VNC_DEPTH
+        value: "8"  # 8-bit for minimal memory
+    resources:
+      memoryMB: 512
