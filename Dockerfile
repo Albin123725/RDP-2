@@ -26,19 +26,19 @@ RUN apt update && apt install -y \
     && apt clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Setup VNC
+# Setup VNC password (echo password twice for confirmation, then 'n' for view-only access)
 RUN mkdir -p /root/.vnc && \
-    echo -e "password123\npassword123\nn" | vncpasswd && \
+    printf "password123\npassword123\nn\n" | vncpasswd && \
     chmod 600 /root/.vnc/passwd
 
 # Create xstartup with proper configuration
-RUN echo '#!/bin/bash
-unset SESSION_MANAGER
-unset DBUS_SESSION_BUS_ADDRESS
-[ -x /etc/vnc/xstartup ] && exec /etc/vnc/xstartup
-[ -r $HOME/.Xresources ] && xrdb $HOME/.Xresources
-xsetroot -solid grey
-vncconfig -iconic &
+RUN echo '#!/bin/bash\n\
+unset SESSION_MANAGER\n\
+unset DBUS_SESSION_BUS_ADDRESS\n\
+[ -x /etc/vnc/xstartup ] && exec /etc/vnc/xstartup\n\
+[ -r $HOME/.Xresources ] && xrdb $HOME/.Xresources\n\
+xsetroot -solid grey\n\
+vncconfig -iconic &\n\
 startxfce4 &' > /root/.vnc/xstartup && \
     chmod +x /root/.vnc/xstartup
 
@@ -47,7 +47,6 @@ RUN wget -q https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz -O /t
     tar -xzf /tmp/novnc.tar.gz -C /opt/ && \
     mv /opt/noVNC-1.4.0 /opt/novnc && \
     rm /tmp/novnc.tar.gz && \
-    # Also get websockify for noVNC
     wget -q https://github.com/novnc/websockify/archive/refs/tags/v0.11.0.tar.gz -O /tmp/websockify.tar.gz && \
     tar -xzf /tmp/websockify.tar.gz -C /opt/novnc/utils/ && \
     mv /opt/novnc/utils/websockify-0.11.0 /opt/novnc/utils/websockify && \
