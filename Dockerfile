@@ -92,14 +92,15 @@ RUN chmod +x /cleanup.sh
 # Copy noVNC HTML files to serve as health check endpoint
 RUN cp /opt/novnc/vnc_lite.html /opt/novnc/index.html
 
+# Fix font path in vncserver config
+RUN sed -i 's|^.*\$fontPath.*=.*$|\$fontPath = "-fp /usr/share/fonts/X11/misc,/usr/share/fonts/X11/Type1,/usr/share/fonts/X11/100dpi,/usr/share/fonts/X11/75dpi";|' /usr/bin/vncserver
+
 EXPOSE 10000
 
 # Optimized start command for Render
 CMD echo "Starting VNC server with optimized settings..." && \
     # Start memory cleanup in background
     /cleanup.sh & \
-    # Set proper font path to avoid errors
-    sed -i 's|^#*.*$fontPath.*$|$fontPath = "-fp /usr/share/fonts/X11/misc,/usr/share/fonts/X11/Type1,/usr/share/fonts/X11/100dpi,/usr/share/fonts/X11/75dpi";|' /usr/bin/vncserver && \
     # Start VNC server with correct options for tightvncserver
     vncserver :1 -geometry ${VNC_RESOLUTION} -depth ${VNC_DEPTH} -localhost no && \
     echo "VNC started successfully on display :1" && \
