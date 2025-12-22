@@ -1,65 +1,62 @@
 FROM ubuntu:22.04
 
+# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
-    DISPLAY=:99
+    TZ=Asia/Kolkata \
+    USER=root \
+    HOME=/root \
+    DISPLAY=:1
 
-RUN apt-get update && apt-get install -y \
-    xvfb \
-    fluxbox \
-    x11vnc \
+# Set timezone
+RUN ln -fs /usr/share/zoneinfo/Asia/Kolkata /etc/localtime && \
+    echo "Asia/Kolkata" > /etc/timezone
+
+# Install packages
+RUN apt update && apt install -y \
+    xfce4 \
+    xfce4-goodies \
+    tightvncserver \
     novnc \
     websockify \
-    xterm \
     wget \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+    sudo \
+    dbus-x11 \
+    x11-utils \
+    x11-xserver-utils \
+    && apt clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Download and use the proper noVNC version
+# Setup VNC password (echo password twice for confirmation, then 'n' for view-only access)
+RUN mkdir -p /root/.vnc && \
+    printf "password123\npassword123\nn\n" | vncpasswd && \
+    chmod 600 /root/.vnc/passwd
+
+# Create xstartup with proper configuration
+RUN echo '#!/bin/bash\n\
+unset SESSION_MANAGER\n\
+unset DBUS_SESSION_BUS_ADDRESS\n\
+[ -x /etc/vnc/xstartup ] && exec /etc/vnc/xstartup\n\
+[ -r $HOME/.Xresources ] && xrdb $HOME/.Xresources\n\
+xsetroot -solid grey\n\
+vncconfig -iconic &\n\
+startxfce4 &' > /root/.vnc/xstartup && \
+    chmod +x /root/.vnc/xstartup
+
+# Get noVNC
 RUN wget -q https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz -O /tmp/novnc.tar.gz && \
-    tar -xzf /tmp/novnc.tar.gz -C /opt && \
+    tar -xzf /tmp/novnc.tar.gz -C /opt/ && \
     mv /opt/noVNC-1.4.0 /opt/novnc && \
-    rm /tmp/novnc.tar.gz
-
-# Create startup script
-RUN cat > /start.sh << 'EOF'
-#!/bin/bash
-
-echo "=== Starting Desktop Service ==="
-
-# Get port from Render
-PORT=${PORT:-10000}
-echo "Service will run on port: $PORT"
-
-# Start Xvfb (virtual display)
-echo "Starting X virtual framebuffer..."
-Xvfb :99 -screen 0 1024x768x24 -ac +extension GLX &
-sleep 2
-
-export DISPLAY=:99
-
-# Start window manager
-echo "Starting Fluxbox..."
-fluxbox &
-sleep 2
-
-# Start a terminal
-echo "Starting terminal..."
-xterm -geometry 80x24+10+10 -e "echo 'Desktop Ready! Close this terminal or keep it open.'" &
-sleep 1
-
-# Start VNC server
-echo "Starting VNC server..."
-x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -rfbport 5900 &
-sleep 2
-
-# Start websockify with proper configuration
-echo "Starting noVNC web interface..."
-cd /opt/novnc
-./utils/novnc_proxy --vnc localhost:5900 --listen 0.0.0.0:$PORT
-EOF
-
-RUN chmod +x /start.sh
+    rm /tmp/novnc.tar.gz && \
+    wget -q https://github.com/novnc/websockify/archive/refs/tags/v0.11.0.tar.gz -O /tmp/websockify.tar.gz && \
+    tar -xzf /tmp/websockify.tar.gz -C /opt/novnc/utils/ && \
+    mv /opt/novnc/utils/websockify-0.11.0 /opt/novnc/utils/websockify && \
+    rm /tmp/websockify.tar.gz
 
 EXPOSE 10000
 
-CMD ["/bin/bash", "/start.sh"]
+# Start command
+CMD echo "Starting VNC server..." && \
+    vncserver :1 -geometry 1280x720 -depth 24 && \
+    echo "VNC started successfully on display :1" && \
+    /opt/novnc/utils/novnc_proxy --vnc localhost:5901 --listen 0.0.0.0:10000 && \
+    tail -f /dev/null
