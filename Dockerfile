@@ -1,62 +1,162 @@
 FROM ubuntu:22.04
 
-# Set environment variables
+# Set environment variables for Render
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Kolkata \
-    USER=root \
-    HOME=/root \
-    DISPLAY=:1
+    DISPLAY=:99 \
+    RESOLUTION=1280x720x24 \
+    USER=ubuntu \
+    HOME=/home/ubuntu
 
-# Set timezone
-RUN ln -fs /usr/share/zoneinfo/Asia/Kolkata /etc/localtime && \
-    echo "Asia/Kolkata" > /etc/timezone
+# Create user (Render runs as non-root)
+RUN useradd -m -s /bin/bash ubuntu && \
+    echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    mkdir -p /home/ubuntu/.vnc && \
+    chown -R ubuntu:ubuntu /home/ubuntu
 
-# Install packages
-RUN apt update && apt install -y \
+# Install system packages
+RUN apt-get update && \
+    apt-get install -y \
+    wget \
+    curl \
+    xvfb \
     xfce4 \
     xfce4-goodies \
-    tightvncserver \
+    x11vnc \
     novnc \
     websockify \
-    wget \
+    firefox \
     sudo \
     dbus-x11 \
     x11-utils \
-    x11-xserver-utils \
-    && apt clean && \
-    rm -rf /var/lib/apt/lists/*
+    xterm \
+    pulseaudio \
+    net-tools \
+    procps \
+    htop \
+    nano \
+    vim \
+    gnome-terminal \
+    fonts-noto \
+    && rm -rf /var/lib/apt/lists/*
 
-# Setup VNC password (echo password twice for confirmation, then 'n' for view-only access)
-RUN mkdir -p /root/.vnc && \
-    printf "password123\npassword123\nn\n" | vncpasswd && \
-    chmod 600 /root/.vnc/passwd
+# Set VNC password (optional, remove for no password)
+RUN echo "password123" | x11vnc -storepasswd - && \
+    mv /root/.vnc/passwd /home/ubuntu/.vnc/passwd 2>/dev/null || true && \
+    chown ubuntu:ubuntu /home/ubuntu/.vnc/passwd 2>/dev/null || true
 
-# Create xstartup with proper configuration
-RUN echo '#!/bin/bash\n\
-unset SESSION_MANAGER\n\
-unset DBUS_SESSION_BUS_ADDRESS\n\
-[ -x /etc/vnc/xstartup ] && exec /etc/vnc/xstartup\n\
-[ -r $HOME/.Xresources ] && xrdb $HOME/.Xresources\n\
-xsetroot -solid grey\n\
-vncconfig -iconic &\n\
-startxfce4 &' > /root/.vnc/xstartup && \
-    chmod +x /root/.vnc/xstartup
+# Create startup script for Render
+RUN echo '#!/bin/bash
 
-# Get noVNC
-RUN wget -q https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz -O /tmp/novnc.tar.gz && \
-    tar -xzf /tmp/novnc.tar.gz -C /opt/ && \
-    mv /opt/noVNC-1.4.0 /opt/novnc && \
-    rm /tmp/novnc.tar.gz && \
-    wget -q https://github.com/novnc/websockify/archive/refs/tags/v0.11.0.tar.gz -O /tmp/websockify.tar.gz && \
-    tar -xzf /tmp/websockify.tar.gz -C /opt/novnc/utils/ && \
-    mv /opt/novnc/utils/websockify-0.11.0 /opt/novnc/utils/websockify && \
-    rm /tmp/websockify.tar.gz
+# Set environment
+export DISPLAY=:99
+export HOME=/home/ubuntu
+export USER=ubuntu
+export PATH=$PATH:/usr/games
 
+# Create necessary directories
+mkdir -p /tmp/.X11-unix
+chmod 1777 /tmp/.X11-unix
+chown root:root /tmp/.X11-unix
+
+# Start Xvfb (virtual display)
+echo "Starting Xvfb virtual display..."
+Xvfb $DISPLAY -screen 0 ${RESOLUTION} -ac +extension GLX +render -noreset > /tmp/xvfb.log 2>&1 &
+XVFB_PID=$!
+sleep 3
+
+# Check if Xvfb started
+if ! ps -p $XVFB_PID > /dev/null; then
+    echo "ERROR: Xvfb failed to start"
+    exit 1
+fi
+
+# Start dbus
+echo "Starting dbus..."
+dbus-launch --sh-syntax > /tmp/dbus.env 2>&1
+source /tmp/dbus.env
+
+# Start Xfce desktop
+echo "Starting Xfce desktop..."
+sudo -u ubuntu startxfce4 > /tmp/xfce.log 2>&1 &
+XFCE_PID=$!
+sleep 5
+
+# Start x11vnc server
+echo "Starting VNC server..."
+x11vnc -display $DISPLAY \
+    -forever \
+    -shared \
+    -nopw \
+    -listen 0.0.0.0 \
+    -rfbport 5900 \
+    -noxdamage \
+    -repeat \
+    -cursor arrow \
+    -nowf \
+    -wait 5 \
+    -defer 5 > /tmp/x11vnc.log 2>&1 &
+VNC_PID=$!
+sleep 2
+
+# Get the port from Render environment (default to 10000)
+PORT=${PORT:-10000}
+echo "Starting noVNC web interface on port $PORT..."
+
+# Start noVNC (websockify)
+websockify --web /usr/share/novnc/ \
+    $PORT \
+    0.0.0.0:5900 \
+    --heartbeat 30 > /tmp/novnc.log 2>&1 &
+
+# Alternative: Using novnc_proxy directly
+# /usr/share/novnc/utils/novnc_proxy \
+#     --vnc localhost:5900 \
+#     --listen 0.0.0.0:$PORT \
+#     --web /usr/share/novnc/ > /tmp/novnc.log 2>&1 &
+
+echo "=========================================="
+echo "Xfce Desktop is ready!"
+echo "=========================================="
+echo "Access via:"
+echo "1. Web browser: https://your-render-url.onrender.com/vnc.html"
+echo "2. VNC client: your-render-url.onrender.com:5900 (no password)"
+echo "=========================================="
+
+# Keep container running and show logs
+tail -f /tmp/xvfb.log /tmp/xfce.log /tmp/x11vnc.log /tmp/novnc.log' > /start.sh
+RUN chmod +x /start.sh
+
+# Create alternative simpler script
+RUN echo '#!/bin/bash
+# Simple startup for Render
+export DISPLAY=:99
+Xvfb $DISPLAY -screen 0 1280x720x24 -ac &
+sleep 2
+startxfce4 &
+sleep 3
+x11vnc -display $DISPLAY -forever -shared -nopw -listen 0.0.0.0 -rfbport 5900 &
+PORT=${PORT:-10000}
+websockify --web /usr/share/novnc/ $PORT 0.0.0.0:5900
+tail -f /dev/null' > /start-simple.sh
+RUN chmod +x /start-simple.sh
+
+# Create health check endpoint
+RUN echo '#!/bin/bash
+# Health check script
+if pgrep -x "Xvfb" > /dev/null && \
+   pgrep -x "xfce4" > /dev/null && \
+   pgrep -x "x11vnc" > /dev/null; then
+    echo "OK"
+    exit 0
+else
+    echo "NOT OK"
+    exit 1
+fi' > /healthcheck.sh
+RUN chmod +x /healthcheck.sh
+
+# Expose port (Render will map this)
 EXPOSE 10000
 
-# Start command
-CMD echo "Starting VNC server..." && \
-    vncserver :1 -geometry 1280x720 -depth 24 && \
-    echo "VNC started successfully on display :1" && \
-    /opt/novnc/utils/novnc_proxy --vnc localhost:5901 --listen 0.0.0.0:10000 && \
-    tail -f /dev/null
+# Start the service
+CMD ["/bin/bash", "/start.sh"]
