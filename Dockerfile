@@ -17,7 +17,7 @@ RUN ln -fs /usr/share/zoneinfo/Asia/Kolkata /etc/localtime && \
 # Install minimal required packages and clean up aggressively
 RUN apt update && apt install -y \
     xfce4 \
-    xfce4-goodies \
+    xfce4-goodiles \
     tightvncserver \
     novnc \
     websockify \
@@ -42,23 +42,23 @@ RUN mkdir -p /root/.vnc && \
     chmod 600 /root/.vnc/passwd
 
 # Create optimized xstartup with memory-saving options
-RUN echo '#!/bin/bash\n\
-unset SESSION_MANAGER\n\
-unset DBUS_SESSION_BUS_ADDRESS\n\
-[ -x /etc/vnc/xstartup ] && exec /etc/vnc/xstartup\n\
-[ -r $HOME/.Xresources ] && xrdb $HOME/.Xresources\n\
-xsetroot -solid grey\n\
-# Disable composite manager to save memory\n\
-xfwm4 --compositor=off &\n\
-# Start with minimal Xfce components\n\
-xfsettingsd --daemon\n\
-xfce4-panel &\n\
-xfdesktop &\n\
-# Start Thunar only when needed\n\
-# thunar --daemon &\n\
-vncconfig -iconic &\n\
-# Set low memory usage policies\n\
-echo 1 > /proc/sys/vm/overcommit_memory\n\
+RUN echo '#!/bin/bash
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+[ -x /etc/vnc/xstartup ] && exec /etc/vnc/xstartup
+[ -r $HOME/.Xresources ] && xrdb $HOME/.Xresources
+xsetroot -solid grey
+# Disable composite manager to save memory
+xfwm4 --compositor=off &
+# Start with minimal Xfce components
+xfsettingsd --daemon
+xfce4-panel &
+xfdesktop &
+# Start Thunar only when needed
+# thunar --daemon &
+vncconfig -iconic &
+# Set low memory usage policies
+echo 1 > /proc/sys/vm/overcommit_memory
 echo 3 > /proc/sys/vm/drop_caches' > /root/.vnc/xstartup && \
     chmod +x /root/.vnc/xstartup
 
@@ -73,13 +73,13 @@ RUN wget -q https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz -O /t
     rm /tmp/websockify.tar.gz
 
 # Create cleanup script for periodic memory management
-RUN echo '#!/bin/bash\n\
-while true; do\n\
-    # Clear cache every 5 minutes\n\
-    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true\n\
-    # Kill any zombie processes\n\
-    ps aux | grep "defunct" | grep -v grep | awk "{print \$2}" | xargs -r kill -9 2>/dev/null || true\n\
-    sleep 300\n\
+RUN echo '#!/bin/bash
+while true; do
+    # Clear cache every 5 minutes
+    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+    # Kill any zombie processes
+    ps aux | grep "defunct" | grep -v grep | awk "{print \$2}" | xargs -r kill -9 2>/dev/null || true
+    sleep 300
 done' > /cleanup.sh && \
     chmod +x /cleanup.sh
 
