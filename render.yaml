@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: novnc-desktop
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: VNC_PASSWORD
+        value: "your_secure_password_here"
+      - key: VNC_RESOLUTION
+        value: "1280x720"
+    healthCheckPath: /
+    autoDeploy: true
