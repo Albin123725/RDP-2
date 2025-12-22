@@ -7,7 +7,7 @@ ENV USER=root
 ENV HOME=/root
 ENV DISPLAY=:1
 ENV VNC_PASSWD=password123
-ENV VNC_RESOLUTION=1280x720
+ENV VNC_RESOLUTION=1024x576
 # Reduced from 24 to save memory
 ENV VNC_DEPTH=16
 
@@ -27,6 +27,9 @@ RUN apt update && apt install -y \
     dbus-x11 \
     x11-utils \
     x11-xserver-utils \
+    xfonts-base \
+    xfonts-100dpi \
+    xfonts-75dpi \
     --no-install-recommends && \
     apt clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
@@ -50,18 +53,13 @@ unset DBUS_SESSION_BUS_ADDRESS
 [ -x /etc/vnc/xstartup ] && exec /etc/vnc/xstartup
 [ -r $HOME/.Xresources ] && xrdb $HOME/.Xresources
 xsetroot -solid grey
+vncconfig -iconic &
 # Disable composite manager to save memory
 xfwm4 --compositor=off &
 # Start with minimal Xfce components
 xfsettingsd --daemon
 xfce4-panel &
 xfdesktop &
-# Start Thunar only when needed
-# thunar --daemon &
-vncconfig -iconic &
-# Set low memory usage policies
-echo 1 > /proc/sys/vm/overcommit_memory
-echo 3 > /proc/sys/vm/drop_caches
 EOF
 
 RUN chmod +x /root/.vnc/xstartup
@@ -76,12 +74,13 @@ RUN wget -q https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz -O /t
     mv /opt/novnc/utils/websockify-0.11.0 /opt/novnc/utils/websockify && \
     rm /tmp/websockify.tar.gz
 
-# Create cleanup script for periodic memory management
+# Create cleanup script for periodic memory management (without system file writes)
 RUN cat > /cleanup.sh << 'EOF'
 #!/bin/bash
 while true; do
-    # Clear cache every 5 minutes
-    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+    # Clean up temporary files instead of trying to write to /proc
+    find /tmp -type f -atime +1 -delete 2>/dev/null || true
+    find /var/tmp -type f -atime +1 -delete 2>/dev/null || true
     # Kill any zombie processes
     ps aux | grep "defunct" | grep -v grep | awk "{print \$2}" | xargs -r kill -9 2>/dev/null || true
     sleep 300
@@ -90,16 +89,23 @@ EOF
 
 RUN chmod +x /cleanup.sh
 
+# Copy noVNC HTML files to serve as health check endpoint
+RUN cp /opt/novnc/vnc_lite.html /opt/novnc/index.html
+
 EXPOSE 10000
 
-# Optimized start command with memory limits
+# Optimized start command for Render
 CMD echo "Starting VNC server with optimized settings..." && \
     # Start memory cleanup in background
     /cleanup.sh & \
-    # Set VNC server with lower color depth and compression
-    vncserver :1 -geometry ${VNC_RESOLUTION} -depth ${VNC_DEPTH} -dpi 96 -rfbauth /root/.vnc/passwd -noxstartup -nolisten tcp -localhost -SecurityTypes VncAuth && \
+    # Set proper font path to avoid errors
+    sed -i 's|^#*.*$fontPath.*$|$fontPath = "-fp /usr/share/fonts/X11/misc,/usr/share/fonts/X11/Type1,/usr/share/fonts/X11/100dpi,/usr/share/fonts/X11/75dpi";|' /usr/bin/vncserver && \
+    # Start VNC server with correct options for tightvncserver
+    vncserver :1 -geometry ${VNC_RESOLUTION} -depth ${VNC_DEPTH} -localhost no && \
     echo "VNC started successfully on display :1" && \
+    echo "Starting noVNC proxy..." && \
     # Start noVNC proxy with low memory profile
-    /opt/novnc/utils/novnc_proxy --vnc localhost:5901 --listen 0.0.0.0:10000 --heartbeat 30 & \
-    # Monitor and restart if memory gets too high
+    /opt/novnc/utils/novnc_proxy --vnc localhost:5901 --listen 0.0.0.0:10000 --heartbeat 30 --web /opt/novnc && \
+    echo "noVNC started on port 10000" && \
+    # Keep container running
     tail -f /dev/null
