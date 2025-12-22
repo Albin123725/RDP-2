@@ -1,7 +1,0 @@
-.git
-.gitignore
-README.md
-*.log
-.env
-Dockerfile.bak
-test/
