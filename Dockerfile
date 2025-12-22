@@ -74,11 +74,11 @@ RUN wget -q https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz -O /t
     mv /opt/novnc/utils/websockify-0.11.0 /opt/novnc/utils/websockify && \
     rm /tmp/websockify.tar.gz
 
-# Create cleanup script for periodic memory management (without system file writes)
+# Create cleanup script for periodic memory management
 RUN cat > /cleanup.sh << 'EOF'
 #!/bin/bash
 while true; do
-    # Clean up temporary files instead of trying to write to /proc
+    # Clean up temporary files
     find /tmp -type f -atime +1 -delete 2>/dev/null || true
     find /var/tmp -type f -atime +1 -delete 2>/dev/null || true
     # Kill any zombie processes
@@ -92,21 +92,19 @@ RUN chmod +x /cleanup.sh
 # Copy noVNC HTML files to serve as health check endpoint
 RUN cp /opt/novnc/vnc_lite.html /opt/novnc/index.html
 
-# Fix font path in vncserver config
-RUN sed -i 's|^.*\$fontPath.*=.*$|\$fontPath = "-fp /usr/share/fonts/X11/misc,/usr/share/fonts/X11/Type1,/usr/share/fonts/X11/100dpi,/usr/share/fonts/X11/75dpi";|' /usr/bin/vncserver
+# Fix the vncserver configuration more carefully
+RUN sed -i '/^\s*\$fontPath\s*=/{s/.*/\$fontPath = "";/}' /usr/bin/vncserver
 
 EXPOSE 10000
 
-# Optimized start command for Render
-CMD echo "Starting VNC server with optimized settings..." && \
-    # Start memory cleanup in background
+# Simple startup script that works
+CMD echo "Starting VNC server..." && \
     /cleanup.sh & \
-    # Start VNC server with correct options for tightvncserver
-    vncserver :1 -geometry ${VNC_RESOLUTION} -depth ${VNC_DEPTH} -localhost no && \
+    # Start VNC server without the problematic -fp option
+    vncserver :1 -geometry ${VNC_RESOLUTION} -depth ${VNC_DEPTH} && \
     echo "VNC started successfully on display :1" && \
     echo "Starting noVNC proxy..." && \
-    # Start noVNC proxy with low memory profile
+    # Start noVNC proxy
     /opt/novnc/utils/novnc_proxy --vnc localhost:5901 --listen 0.0.0.0:10000 --heartbeat 30 --web /opt/novnc && \
     echo "noVNC started on port 10000" && \
-    # Keep container running
     tail -f /dev/null
