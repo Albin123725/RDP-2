@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: smooth-browser
+    name: direct-rdp-browser
     env: docker
     plan: free
     dockerfilePath: Dockerfile
@@ -8,4 +8,5 @@ services:
     envVars:
       - key: PORT
         value: 10000
+    healthCheckPath: /health
     autoDeploy: true
