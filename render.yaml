@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: buttery-smooth-browser
+    name: smooth-browser
     env: docker
     plan: free
     dockerfilePath: Dockerfile
