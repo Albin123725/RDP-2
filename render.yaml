@@ -1,11 +1,12 @@
 services:
   - type: web
-    name: browser-rdp
-    env: docker
-    dockerfilePath: ./Dockerfile
+    name: 24-7-browser
+    env: python
     plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
     envVars:
       - key: PORT
-        value: 8080
+        value: 10000
     healthCheckPath: /health
     autoDeploy: true
