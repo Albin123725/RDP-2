@@ -1,16 +1,11 @@
 services:
   - type: web
-    name: pure-rdp-browser
+    name: rdp-browser
     env: docker
     plan: free
     dockerfilePath: Dockerfile
     dockerContext: .
-    # Render free tier only allows port 10000 for web services
-    # We'll use a private service instead
     envVars:
       - key: PORT
         value: 10000
     autoDeploy: true
-
-# OR use private service for direct VNC access
-# (but free tier has limitations)
