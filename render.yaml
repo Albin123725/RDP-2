@@ -1,12 +1,15 @@
 services:
   - type: web
-    name: lightweight-browser
-    env: python
+    name: lightweight-rdp
+    env: docker
+    dockerfilePath: ./Dockerfile
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
-    envVars:
-      - key: PORT
-        value: 10000
-    healthCheckPath: /health
+    ports:
+      - port: 3389
+        protocol: TCP
+      - port: 5900
+        protocol: TCP
+      - port: 10000
+        protocol: TCP
+    healthCheckPath: /
     autoDeploy: true
