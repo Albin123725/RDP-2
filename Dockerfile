@@ -1,11 +1,11 @@
-# 🚀 Ultra-Minimal RDP Browser - Fixed for Render
-# Uses virtual environment to avoid PEP 668 restrictions
+# 🚀 Ultra-Minimal RDP Browser - Simplified
+# No psutil dependency, only essential packages
 
 FROM alpine:edge
 
-# Install ALL packages in one RUN to minimize layers
+# Install ALL packages including build tools
 RUN apk add --no-cache --update \
-    # Browser runtime
+    # Browser
     chromium \
     chromium-chromedriver \
     # X11 display
@@ -16,22 +16,30 @@ RUN apk add --no-cache --update \
     # Web VNC
     novnc \
     websockify \
-    # Python with virtual environment
+    # Python with build tools
     python3 \
     py3-pip \
-    py3-virtualenv \
-    # Required system libraries
+    # Build tools for Python packages
+    gcc \
+    musl-dev \
+    python3-dev \
+    linux-headers \
+    # System dependencies
     dbus \
     ttf-freefont \
     ttf-dejavu \
-    # Cleanup
+    bash \
+    wget \
+    # Clean cache
     && rm -rf /var/cache/apk/*
 
-# Create virtual environment BEFORE installing packages
+# Create app directory and virtual environment
+WORKDIR /app
 RUN python3 -m venv /app/venv
 
-# Install Python packages in virtual environment
-RUN /app/venv/bin/pip install --no-cache-dir \
+# Install Python packages WITH build tools available
+RUN /app/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /app/venv/bin/pip install --no-cache-dir \
     flask==2.3.3 \
     gunicorn==21.2.0 \
     psutil==5.9.5
@@ -41,49 +49,66 @@ RUN adduser -D -u 1000 browseruser \
     && mkdir -p /home/browseruser/.config \
     && chown -R browseruser:browseruser /home/browseruser
 
-# Create app directory
-WORKDIR /app
-
-# Copy application files
+# Copy ONLY essential files
 COPY rdp-browser.py /app/
-COPY requirements.txt /app/
 
 # Set environment variables
 ENV DISPLAY=:99
-ENV CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer"
+ENV CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu"
 ENV HOME=/tmp
 ENV PORT=10000
 ENV PATH="/app/venv/bin:$PATH"
+ENV PYTHONPATH="/app/venv/lib/python3.12/site-packages"
 
 # Create optimized startup script
-RUN echo '#!/bin/sh' > /app/start.sh && \
+RUN echo '#!/bin/bash' > /app/start.sh && \
     echo 'set -e' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Export virtual environment path' >> /app/start.sh && \
+    echo 'echo "=========================================="' >> /app/start.sh && \
+    echo 'echo "🚀 Starting Ultra-Minimal RDP Browser"' >> /app/start.sh && \
+    echo 'echo "=========================================="' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Export environment' >> /app/start.sh && \
     echo 'export PATH="/app/venv/bin:$PATH"' >> /app/start.sh && \
+    echo 'export DISPLAY=:99' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Start Xvfb' >> /app/start.sh && \
-    echo 'Xvfb :99 -screen 0 1024x768x16 -ac +extension GLX +render -noreset >/dev/null 2>&1 &' >> /app/start.sh && \
-    echo '' >> /app/start.sh && \
-    echo '# Wait for X server' >> /app/start.sh && \
+    echo '# Start Xvfb (virtual display)' >> /app/start.sh && \
+    echo 'Xvfb :99 -screen 0 1024x768x16 -ac +extension GLX +render -noreset 2>/dev/null &' >> /app/start.sh && \
     echo 'sleep 2' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Start fluxbox' >> /app/start.sh && \
-    echo 'fluxbox >/dev/null 2>&1 &' >> /app/start.sh && \
+    echo '# Start fluxbox (minimal WM)' >> /app/start.sh && \
+    echo 'fluxbox 2>/dev/null &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Start browser' >> /app/start.sh && \
-    echo 'chromium-browser $CHROMIUM_FLAGS --start-maximized --app="https://literate-cod-g474wqj4x9f59p.github.dev/?editor=jupyter" >/dev/null 2>&1 &' >> /app/start.sh && \
+    echo '# Start browser with target URL' >> /app/start.sh && \
+    echo 'chromium-browser $CHROMIUM_FLAGS \' >> /app/start.sh && \
+    echo '  --start-maximized \' >> /app/start.sh && \
+    echo '  --app="https://literate-cod-g474wqj4x9f59p.github.dev/?editor=jupyter" \' >> /app/start.sh && \
+    echo '  --display=:99 2>/dev/null &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Start VNC server (no password)' >> /app/start.sh && \
-    echo 'x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -rfbport 5901 -noxdamage >/dev/null 2>&1 &' >> /app/start.sh && \
+    echo 'x11vnc \' >> /app/start.sh && \
+    echo '  -display :99 \' >> /app/start.sh && \
+    echo '  -forever \' >> /app/start.sh && \
+    echo '  -shared \' >> /app/start.sh && \
+    echo '  -nopw \' >> /app/start.sh && \
+    echo '  -listen 0.0.0.0 \' >> /app/start.sh && \
+    echo '  -rfbport 5901 \' >> /app/start.sh && \
+    echo '  -noxdamage 2>/dev/null &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Start noVNC web interface' >> /app/start.sh && \
-    echo 'websockify --web /usr/share/novnc 6081 localhost:5901 >/dev/null 2>&1 &' >> /app/start.sh && \
+    echo 'websockify --web /usr/share/novnc 6081 localhost:5901 2>/dev/null &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Start Flask control panel' >> /app/start.sh && \
-    echo 'cd /app && python3 rdp-browser.py >/dev/null 2>&1 &' >> /app/start.sh && \
+    echo 'cd /app && python3 rdp-browser.py 2>/dev/null &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Keep container running' >> /app/start.sh && \
+    echo 'echo "✅ RDP Browser Ready!"' >> /app/start.sh && \
+    echo 'echo ""' >> /app/start.sh && \
+    echo 'echo "🌐 Control Panel: http://localhost:10000"' >> /app/start.sh && \
+    echo 'echo "🔗 Web VNC: http://localhost:6081/vnc.html"' >> /app/start.sh && \
+    echo 'echo "🎯 Target: https://literate-cod-g474wqj4x9f59p.github.dev/?editor=jupyter"' >> /app/start.sh && \
+    echo 'echo "=========================================="' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Keep container alive' >> /app/start.sh && \
     echo 'tail -f /dev/null' >> /app/start.sh && \
     chmod +x /app/start.sh
 
@@ -97,8 +122,8 @@ USER browseruser
 EXPOSE 10000 5901 6081
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:10000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:10000/health || exit 1
 
-# Start everything
-CMD ["/bin/sh", "/app/start.sh"]
+# Start the service
+CMD ["/bin/bash", "/app/start.sh"]
