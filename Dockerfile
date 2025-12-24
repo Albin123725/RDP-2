@@ -1,43 +1,37 @@
-# 🚀 Ultra-Minimal RDP Browser
-# Only browser, no desktop, ~150MB memory
+# 🚀 Ultra-Minimal RDP Browser - Fixed for Render
+# Uses virtual environment to avoid PEP 668 restrictions
 
-# Stage 1: Build minimal base
-FROM alpine:edge AS builder
+FROM alpine:edge
 
-# Install ONLY essential packages for browser
+# Install ALL packages in one RUN to minimize layers
 RUN apk add --no-cache --update \
     # Browser runtime
     chromium \
     chromium-chromedriver \
-    # Minimal X11 for display
+    # X11 display
     xvfb \
     x11vnc \
-    # Window manager (lightest available)
+    # Minimal window manager
     fluxbox \
-    # Web VNC interface
+    # Web VNC
     novnc \
     websockify \
+    # Python with virtual environment
+    python3 \
+    py3-pip \
+    py3-virtualenv \
     # Required system libraries
     dbus \
     ttf-freefont \
     ttf-dejavu \
-    # Python for control panel
-    python3 \
-    py3-pip \
     # Cleanup
     && rm -rf /var/cache/apk/*
 
-# Stage 2: Final image
-FROM alpine:edge
+# Create virtual environment BEFORE installing packages
+RUN python3 -m venv /app/venv
 
-# Copy from builder
-COPY --from=builder / /
-
-# Install Python dependencies ONLY
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    && pip3 install --no-cache-dir \
+# Install Python packages in virtual environment
+RUN /app/venv/bin/pip install --no-cache-dir \
     flask==2.3.3 \
     gunicorn==21.2.0 \
     psutil==5.9.5
@@ -59,34 +53,38 @@ ENV DISPLAY=:99
 ENV CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --disable-software-rasterizer"
 ENV HOME=/tmp
 ENV PORT=10000
+ENV PATH="/app/venv/bin:$PATH"
 
-# Create startup script
+# Create optimized startup script
 RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'set -e' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Start Xvfb in background' >> /app/start.sh && \
-    echo 'Xvfb :99 -screen 0 1024x768x16 &' >> /app/start.sh && \
+    echo '# Export virtual environment path' >> /app/start.sh && \
+    echo 'export PATH="/app/venv/bin:$PATH"' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Start Xvfb' >> /app/start.sh && \
+    echo 'Xvfb :99 -screen 0 1024x768x16 -ac +extension GLX +render -noreset >/dev/null 2>&1 &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Wait for X server' >> /app/start.sh && \
     echo 'sleep 2' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Start fluxbox (minimal window manager)' >> /app/start.sh && \
-    echo 'fluxbox &' >> /app/start.sh && \
+    echo '# Start fluxbox' >> /app/start.sh && \
+    echo 'fluxbox >/dev/null 2>&1 &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Start browser with target URL' >> /app/start.sh && \
-    echo 'chromium-browser $CHROMIUM_FLAGS --start-maximized --app="https://literate-cod-g474wqj4x9f59p.github.dev/?editor=jupyter" &' >> /app/start.sh && \
+    echo '# Start browser' >> /app/start.sh && \
+    echo 'chromium-browser $CHROMIUM_FLAGS --start-maximized --app="https://literate-cod-g474wqj4x9f59p.github.dev/?editor=jupyter" >/dev/null 2>&1 &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Start x11vnc (no password)' >> /app/start.sh && \
-    echo 'x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -rfbport 5901 &' >> /app/start.sh && \
+    echo '# Start VNC server (no password)' >> /app/start.sh && \
+    echo 'x11vnc -display :99 -forever -shared -nopw -listen 0.0.0.0 -rfbport 5901 -noxdamage >/dev/null 2>&1 &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Start noVNC web interface' >> /app/start.sh && \
-    echo 'websockify --web /usr/share/novnc 6081 localhost:5901 &' >> /app/start.sh && \
+    echo 'websockify --web /usr/share/novnc 6081 localhost:5901 >/dev/null 2>&1 &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Start Flask control panel' >> /app/start.sh && \
-    echo 'cd /app && python3 rdp-browser.py &' >> /app/start.sh && \
+    echo 'cd /app && python3 rdp-browser.py >/dev/null 2>&1 &' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Keep container running' >> /app/start.sh && \
-    echo 'wait' >> /app/start.sh && \
+    echo 'tail -f /dev/null' >> /app/start.sh && \
     chmod +x /app/start.sh
 
 # Set permissions
@@ -96,9 +94,6 @@ RUN chown -R browseruser:browseruser /app
 USER browseruser
 
 # Expose ports
-# 10000: Control panel
-# 5901: VNC
-# 6081: Web VNC
 EXPOSE 10000 5901 6081
 
 # Health check
