@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: 24-7-browser
+    name: universal-browser
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
