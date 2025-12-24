@@ -1,23 +1,34 @@
-FROM dorowu/ubuntu-desktop-lxde-vnc:focal
+FROM ubuntu:22.04
 
-# Set default environment variables
-ENV RESOLUTION=1280x720
-ENV VNC_PASSWORD=password
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US:en
-ENV LC_ALL=en_US.UTF-8
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Add optional additional packages
-USER root
+# Install XFCE, VNC, and noVNC
 RUN apt-get update && apt-get install -y \
+    xfce4 \
+    xfce4-goodies \
+    tightvncserver \
+    novnc \
+    websockify \
     firefox \
-    gedit \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a user for sudo access (optional)
-RUN useradd -m -s /bin/bash desktopuser && \
-    echo "desktopuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# Set up VNC
+RUN mkdir -p /root/.vnc && \
+    echo "password" | vncpasswd -f > /root/.vnc/passwd && \
+    chmod 600 /root/.vnc/passwd
 
-# Switch to the user (optional)
-USER desktopuser
+# Create startup script
+RUN echo '#!/bin/bash\n\
+unset SESSION_MANAGER\n\
+unset DBUS_SESSION_BUS_ADDRESS\n\
+exec startxfce4 &' > /root/.vnc/xstartup && \
+    chmod +x /root/.vnc/xstartup
+
+# Configure noVNC
+RUN ln -s /usr/share/novnc/vnc_lite.html /usr/share/novnc/index.html
+
+# Start services
+EXPOSE 80
+CMD ["bash", "-c", "vncserver :1 -geometry 1280x720 -depth 24 && websockify -D --web=/usr/share/novnc/ 80 localhost:5901 && tail -f /dev/null"]
