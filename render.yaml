@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: fast-rdp
+    name: buttery-smooth-browser
     env: docker
     plan: free
     dockerfilePath: Dockerfile
