@@ -1,12 +1,15 @@
 services:
   - type: web
-    name: universal-browser
-    env: python
+    name: ultra-minimal-rdp-browser
+    env: docker
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    dockerfilePath: Dockerfile
+    dockerContext: .
+    startCommand: /bin/sh /app/start.sh
     envVars:
       - key: PORT
         value: 10000
+      - key: RENDER
+        value: "true"
     healthCheckPath: /health
     autoDeploy: true
