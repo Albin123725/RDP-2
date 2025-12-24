@@ -1,41 +1,30 @@
 FROM ubuntu:22.04
 
-# Install required packages
-RUN apt update && apt install -y \
+# 1. Install all necessary packages in one layer
+RUN apt-get update && apt-get install -y \
     xfce4 \
     xfce4-goodies \
     xrdp \
     sudo \
-    wget \
-    --no-install-recommends
+    dbus-x11 \
+    x11-utils \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create user and directory
-RUN useradd -m -s /bin/bash app && \
-    echo "app:password" | chpasswd && \
-    usermod -aG sudo app && \
-    echo "app ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# 2. Create a non-root user with explicit UID/GID and add to sudo
+RUN useradd -m -u 1000 -s /bin/bash appuser && \
+    echo "appuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Set up RDP configuration
-RUN mkdir -p /home/app/.config && \
-    echo "startxfce4" > /home/app/.xsession && \
-    chown -R app:app /home/app
+# 3. Set up the xsession file as the correct user
+USER appuser
+WORKDIR /home/appuser
+RUN echo "startxfce4" > .xsession
 
-# Configure xrdp
-RUN sed -i 's/port=3389/port=$PORT/g' /etc/xrdp/xrdp.ini && \
-    sed -i 's/; autorun=x/autorun=x/g' /etc/xrdp/xrdp.ini && \
-    sed -i 's/^xserverbpp=.*$/xserverbpp=24/g' /etc/xrdp/xrdp.ini
+# 4. Configure xrdp to log to stdout/stderr for Render to capture[citation:9]
+USER root
+RUN sed -i 's/^\(LogFile=.*\)$/#\1/' /etc/xrdp/xrdp.ini && \
+    sed -i 's/^\(LogLevel=.*\)$/#\1/' /etc/xrdp/xrdp.ini && \
+    echo "logfile=/dev/stderr" >> /etc/xrdp/xrdp.ini
 
-# Clean up
-RUN apt clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# Switch to app user
-USER app
-
-# Set display
-ENV DISPLAY=:1
-
-EXPOSE 3389
-
-# Start xrdp
-CMD ["xrdp", "--nodaemon"]
+# 5. Clean up and set the startup command
+# The service must bind to 0.0.0.0 and listen on the port Render provides[citation:2]
+CMD sudo /usr/sbin/xrdp-sesman && sudo /usr/sbin/xrdp -n
