@@ -1,44 +1,23 @@
-FROM ubuntu:22.04
+FROM dorowu/ubuntu-desktop-lxde-vnc:focal
 
-# 1. Prevent interactive prompts during installation
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=UTC
+# Set default environment variables
+ENV RESOLUTION=1280x720
+ENV VNC_PASSWORD=password
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
-# 2. Pre-configure keyboard settings for English US
-RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections && \
-    echo "keyboard-configuration keyboard-configuration/layoutcode string us" | debconf-set-selections && \
-    echo "keyboard-configuration keyboard-configuration/variantcode string" | debconf-set-selections && \
-    echo "keyboard-configuration keyboard-configuration/modelcode string pc105" | debconf-set-selections
-
-# 3. Install all packages without interactive prompts
+# Add optional additional packages
+USER root
 RUN apt-get update && apt-get install -y \
-    tzdata \
-    keyboard-configuration \
-    locales \
-    xfce4 \
-    xfce4-goodies \
-    xrdp \
+    firefox \
+    gedit \
     sudo \
-    dbus-x11 \
-    x11-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. Set locale and timezone
-RUN ln -fs /usr/share/zoneinfo/$TZ /etc/localtime && \
-    echo $TZ > /etc/timezone && \
-    locale-gen en_US.UTF-8
+# Create a user for sudo access (optional)
+RUN useradd -m -s /bin/bash desktopuser && \
+    echo "desktopuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# 5. Create user and setup
-RUN useradd -m -u 1000 -s /bin/bash appuser && \
-    echo "appuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-
-USER appuser
-WORKDIR /home/appuser
-RUN echo "startxfce4" > .xsession
-
-USER root
-RUN sed -i 's/^\(LogFile=.*\)$/#\1/' /etc/xrdp/xrdp.ini && \
-    sed -i 's/^\(LogLevel=.*\)$/#\1/' /etc/xrdp/xrdp.ini && \
-    echo "logfile=/dev/stderr" >> /etc/xrdp/xrdp.ini
-
-CMD sudo /usr/sbin/xrdp-sesman && sudo /usr/sbin/xrdp -n
+# Switch to the user (optional)
+USER desktopuser
