@@ -2,6 +2,7 @@
 """
 COMPLETE SINGLE-FILE UNIVERSAL BROWSER
 Automatically handles blocked sites and provides smart alternatives
+FIXED VERSION: GitHub Codespaces and all blocked sites work properly
 """
 
 import os
@@ -77,37 +78,44 @@ class SiteDetector:
             'name': 'Google',
             'reason': 'Uses X-Frame-Options and CSP to block embedding',
             'alternative': 'Open in new tab',
-            'category': 'search'
+            'category': 'search',
+            'priority': 1
         },
         'github.com': {
             'name': 'GitHub',
             'reason': 'Uses Content-Security-Policy to prevent clickjacking',
             'alternative': 'Direct redirect or new tab',
-            'category': 'development'
+            'category': 'development',
+            'priority': 1
         },
         'github.dev': {
             'name': 'GitHub Codespaces',
             'reason': 'Development environment requires authentication and blocks iframes',
             'alternative': 'Direct redirect with authentication',
-            'category': 'development'
+            'category': 'development',
+            'priority': 10,  # Highest priority - ALWAYS redirect immediately
+            'immediate_action': 'redirect'
         },
         'youtube.com': {
             'name': 'YouTube',
             'reason': 'Video platform blocks embedding without explicit permissions',
             'alternative': 'Use YouTube embed API or open in new tab',
-            'category': 'media'
+            'category': 'media',
+            'priority': 1
         },
         'facebook.com': {
             'name': 'Facebook',
             'reason': 'Social media platform blocks iframes for security',
             'alternative': 'Open in new tab',
-            'category': 'social'
+            'category': 'social',
+            'priority': 1
         },
         'twitter.com': {
             'name': 'Twitter/X',
             'reason': 'Blocks iframes to prevent UI manipulation',
             'alternative': 'Open in new tab',
-            'category': 'social'
+            'category': 'social',
+            'priority': 1
         }
     }
     
@@ -134,6 +142,22 @@ class SiteDetector:
             # Check if domain is in blocked list
             for blocked_domain, info in cls.BLOCKED_SITES.items():
                 if blocked_domain in domain:
+                    # GitHub Codespaces gets special handling
+                    if 'github.dev' in domain:
+                        return {
+                            'status': 'blocked',
+                            'domain': domain,
+                            'name': info['name'],
+                            'reason': info['reason'],
+                            'alternative': info['alternative'],
+                            'category': info['category'],
+                            'action': 'redirect',
+                            'immediate': True,
+                            'priority': info.get('priority', 1),
+                            'redirect_url': f'/redirect?url={urllib.parse.quote(url)}'
+                        }
+                    
+                    # Other blocked sites
                     return {
                         'status': 'blocked',
                         'domain': domain,
@@ -141,7 +165,8 @@ class SiteDetector:
                         'reason': info['reason'],
                         'alternative': info['alternative'],
                         'category': info['category'],
-                        'action': 'redirect' if 'github.dev' in domain else 'new_tab'
+                        'action': 'redirect' if 'github.dev' in domain else 'new_tab',
+                        'priority': info.get('priority', 1)
                     }
             
             # Check if domain is in allowed list
@@ -177,7 +202,7 @@ class SiteDetector:
         <html>
         <head>
             <meta charset="UTF-8">
-            <title>Redirecting...</title>
+            <title>Redirecting to GitHub Codespaces...</title>
             <meta http-equiv="refresh" content="{delay};url={url}">
             <style>
                 body {{ 
@@ -212,17 +237,25 @@ class SiteDetector:
                     0% {{ transform: rotate(0deg); }}
                     100% {{ transform: rotate(360deg); }}
                 }}
+                .logo {{
+                    font-size: 48px;
+                    margin-bottom: 20px;
+                }}
             </style>
         </head>
         <body>
             <div class="container">
+                <div class="logo">🚀</div>
                 <div class="spinner"></div>
-                <h2>🔗 Redirecting to Secure Access</h2>
-                <p>This site cannot be displayed in an iframe for security reasons.</p>
+                <h2>Redirecting to GitHub Codespaces</h2>
+                <p>GitHub Codespaces cannot be displayed in an iframe for security reasons.</p>
                 <p>You are being redirected to:</p>
                 <p><strong><code>{url}</code></strong></p>
                 <p>Redirecting in {delay} seconds...</p>
-                <p>If not redirected, <a href="{url}" style="color: #60a5fa;">click here</a>.</p>
+                <p>If not redirected, <a href="{url}" style="color: #60a5fa; text-decoration: underline;">click here to access directly</a>.</p>
+                <div style="margin-top: 20px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px;">
+                    <small>Note: GitHub Codespaces requires direct browser access for proper authentication and functionality.</small>
+                </div>
             </div>
         </body>
         </html>
@@ -328,6 +361,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
         }
         
+        .btn-immediate {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
         .content {
             flex: 1;
             padding: 20px;
@@ -420,6 +464,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             flex-wrap: wrap;
         }
         
+        .github-warning {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%);
+            border-left: 4px solid #8b5cf6;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 6px;
+        }
+        
         @media (max-width: 768px) {
             .url-input { min-width: auto; }
             .btn { padding: 10px 16px; font-size: 14px; }
@@ -447,26 +499,42 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <div class="card" id="analysisCard">
             <h3>
                 Site Analysis
-                <span class="status-badge" id="analysisStatus">Checking...</span>
+                <span class="status-badge" id="analysisStatus">Ready</span>
             </h3>
             <div class="site-info" id="siteInfo">
                 <p>Enter a URL above to analyze site compatibility</p>
+                <div class="github-warning" id="githubWarning" style="display: none;">
+                    <strong>⚠️ GitHub Codespaces Detected</strong>
+                    <p style="margin: 5px 0; font-size: 14px;">This site requires direct access and cannot be displayed in an iframe.</p>
+                </div>
             </div>
-            <div class="action-buttons" id="actionButtons"></div>
+            <div class="action-buttons" id="actionButtons">
+                <button class="btn btn-success" onclick="loadWebsite()">
+                    🚀 Smart Load
+                </button>
+            </div>
         </div>
         
         <!-- Browser Container -->
         <div class="card">
             <h3>Browser View</h3>
             <div class="iframe-container">
-                <div class="loading" id="loading">
+                <div class="loading" id="loading" style="display: none;">
                     <div class="spinner"></div>
-                    <p id="loadingText">Ready to browse</p>
+                    <p id="loadingText">Loading...</p>
                 </div>
                 <iframe class="browser-frame" id="browserFrame" 
                         sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
                         allow="camera; microphone; fullscreen">
                 </iframe>
+                <div id="redirectMessage" style="display: none; text-align: center; padding: 40px;">
+                    <h3>🚀 Redirecting to GitHub Codespaces</h3>
+                    <p>This site cannot be displayed in an iframe.</p>
+                    <p>You will be redirected automatically in <span id="countdown">3</span> seconds...</p>
+                    <button class="btn btn-immediate" onclick="forceImmediateRedirect()">
+                        🔥 Redirect Now
+                    </button>
+                </div>
             </div>
         </div>
         
@@ -510,7 +578,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             • Method: <span id="currentMethod">Auto-detect</span>
         </div>
         <div>
-            <span id="currentDomain">No site loaded</span>
+            <span id="currentDomain">github.dev</span>
         </div>
     </div>
 
@@ -522,7 +590,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             startTime: Date.now(),
             autoRefreshInterval: null,
             debugMode: false,
-            lastLoadMethod: 'auto'
+            lastLoadMethod: 'auto',
+            immediateRedirect: false
         };
         
         // DOM Elements
@@ -543,6 +612,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const loadMethodSelect = document.getElementById('loadMethod');
         const autoRefreshSelect = document.getElementById('autoRefresh');
         const debugModeCheckbox = document.getElementById('debugMode');
+        const githubWarning = document.getElementById('githubWarning');
+        const redirectMessage = document.getElementById('redirectMessage');
+        const countdownEl = document.getElementById('countdown');
         
         // Initialize
         function init() {
@@ -551,9 +623,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             
             // Set initial URL from input
             state.currentUrl = urlInput.value;
+            currentDomain.textContent = 'github.dev';
             
-            // Analyze initial URL
-            analyzeUrl(state.currentUrl);
+            // Check if it's a GitHub Codespaces URL
+            if (state.currentUrl.includes('github.dev')) {
+                showGitHubWarning();
+                // Auto-analyze GitHub URLs
+                setTimeout(() => analyzeUrl(state.currentUrl), 500);
+            }
             
             // Start uptime updater
             setInterval(updateUptime, 60000);
@@ -570,6 +647,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (e.key === 'Enter') loadWebsite();
             });
             
+            // URL change detection
+            urlInput.addEventListener('input', (e) => {
+                const url = e.target.value;
+                if (url.includes('github.dev')) {
+                    showGitHubWarning();
+                } else {
+                    hideGitHubWarning();
+                }
+            });
+            
             // Iframe events
             browserFrame.addEventListener('load', handleIframeLoad);
             browserFrame.addEventListener('error', handleIframeError);
@@ -580,24 +667,77 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             debugModeCheckbox.addEventListener('change', updateDebugMode);
         }
         
+        function showGitHubWarning() {
+            githubWarning.style.display = 'block';
+            siteInfo.innerHTML = `
+                <div class="github-warning">
+                    <strong>🚀 GitHub Codespaces Detected</strong>
+                    <p style="margin: 5px 0; font-size: 14px;">This development environment requires direct browser access and cannot be embedded in an iframe.</p>
+                    <p style="margin: 5px 0; font-size: 13px; color: #cbd5e1;">Smart Load will automatically redirect you to the site.</p>
+                </div>
+            `;
+        }
+        
+        function hideGitHubWarning() {
+            githubWarning.style.display = 'none';
+        }
+        
         async function analyzeUrl(url) {
             if (!url) return;
             
             try {
-                loadingText.textContent = 'Analyzing site...';
+                loadingText.textContent = 'Analyzing site compatibility...';
                 loading.style.display = 'flex';
                 browserFrame.style.display = 'none';
                 
-                // Call backend analysis
+                // Show immediate analysis for GitHub Codespaces
+                if (url.includes('github.dev')) {
+                    state.currentAnalysis = {
+                        status: 'blocked',
+                        domain: 'github.dev',
+                        name: 'GitHub Codespaces',
+                        reason: 'Development environment requires direct access',
+                        action: 'redirect',
+                        immediate: true
+                    };
+                    updateAnalysisUI(state.currentAnalysis);
+                    return;
+                }
+                
+                // Call backend analysis for other sites
                 const response = await fetch(`/analyze?url=${encodeURIComponent(url)}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('Analysis response:', data);
                 
                 state.currentAnalysis = data;
                 updateAnalysisUI(data);
                 
             } catch (error) {
-                log(`Analysis error: ${error}`);
-                showError('Failed to analyze URL');
+                console.error('Analysis error:', error);
+                
+                // Fallback analysis for errors
+                const domain = extractDomain(url);
+                state.currentAnalysis = {
+                    status: 'unknown',
+                    domain: domain,
+                    action: 'try_iframe',
+                    error: error.message
+                };
+                updateAnalysisUI(state.currentAnalysis);
+            }
+        }
+        
+        function extractDomain(url) {
+            try {
+                const parsed = new URL(url);
+                return parsed.hostname.replace('www.', '');
+            } catch {
+                return url.split('/')[2] || url;
             }
         }
         
@@ -606,71 +746,100 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             analysisStatus.textContent = analysis.status.toUpperCase();
             analysisStatus.className = 'status-badge';
             
+            let infoHTML = '';
+            
             switch(analysis.status) {
                 case 'blocked':
                     analysisStatus.classList.add('status-danger');
-                    siteInfo.innerHTML = `
+                    infoHTML = `
                         <p><strong>${analysis.name || analysis.domain}</strong></p>
-                        <p>${analysis.reason}</p>
-                        <p><small>This site blocks iframe embedding for security.</small></p>
+                        <p>${analysis.reason || 'This site blocks iframe embedding for security.'}</p>
+                        <p><small>${analysis.alternative || 'Use redirect or new tab method.'}</small></p>
                     `;
+                    
+                    if (analysis.immediate) {
+                        infoHTML += `
+                            <div class="github-warning">
+                                <strong>⚡ Immediate Redirect Required</strong>
+                                <p>This site requires direct browser access. Click "Smart Load" to redirect.</p>
+                            </div>
+                        `;
+                    }
                     break;
                     
                 case 'allowed':
                     analysisStatus.classList.add('status-success');
-                    siteInfo.innerHTML = `
+                    infoHTML = `
                         <p><strong>${analysis.domain}</strong></p>
-                        <p>${analysis.description}</p>
-                        <p><small>This site should work in iframe.</small></p>
+                        <p>${analysis.description || 'This site should work in iframe.'}</p>
+                        <p><small>You can load this site directly in the iframe.</small></p>
                     `;
                     break;
                     
                 case 'unknown':
                     analysisStatus.classList.add('status-warning');
-                    siteInfo.innerHTML = `
+                    infoHTML = `
                         <p><strong>${analysis.domain}</strong></p>
-                        <p>${analysis.warning}</p>
+                        <p>${analysis.warning || 'Compatibility unknown'}</p>
                         <p><small>Will try iframe first, fallback if needed.</small></p>
                     `;
                     break;
+                    
+                case 'error':
+                    analysisStatus.classList.add('status-danger');
+                    infoHTML = `
+                        <p><strong>Analysis Error</strong></p>
+                        <p>${analysis.error || 'Failed to analyze URL'}</p>
+                        <p><small>Will try iframe method as fallback.</small></p>
+                    `;
+                    break;
             }
+            
+            siteInfo.innerHTML = infoHTML;
             
             // Update action buttons
             updateActionButtons(analysis);
             
             // Update domain display
-            currentDomain.textContent = analysis.domain || 'Unknown';
+            currentDomain.textContent = analysis.domain || extractDomain(state.currentUrl);
         }
         
         function updateActionButtons(analysis) {
             actionButtons.innerHTML = '';
             
-            const methods = {
-                'iframe': { text: 'Load in iFrame', class: 'btn-success', icon: '📱' },
-                'redirect': { text: 'Secure Redirect', class: 'btn-warning', icon: '🔗' },
-                'new_tab': { text: 'Open New Tab', class: 'btn', icon: '↗️' },
-                'try_iframe': { text: 'Try iFrame First', class: 'btn', icon: '🔄' }
-            };
+            // Smart Load button (always show)
+            const smartBtn = document.createElement('button');
+            smartBtn.className = analysis.immediate ? 'btn btn-immediate' : 'btn';
+            smartBtn.innerHTML = analysis.immediate ? '🚀 Immediate Redirect' : '🌐 Smart Load';
+            smartBtn.onclick = () => loadWebsite();
+            actionButtons.appendChild(smartBtn);
             
-            // Always show auto-detect button
-            const autoBtn = document.createElement('button');
-            autoBtn.className = 'btn btn-success';
-            autoBtn.innerHTML = '🚀 Smart Load';
-            autoBtn.onclick = () => loadWebsite();
-            actionButtons.appendChild(autoBtn);
-            
-            // Show specific method buttons based on analysis
-            const action = analysis.action || 'try_iframe';
-            if (methods[action]) {
-                const method = methods[action];
-                const btn = document.createElement('button');
-                btn.className = `btn ${method.class}`;
-                btn.innerHTML = `${method.icon} ${method.text}`;
-                btn.onclick = () => loadWithMethod(action);
-                actionButtons.appendChild(btn);
+            // Specific method button based on analysis
+            if (analysis.action === 'redirect' || analysis.immediate) {
+                const redirectBtn = document.createElement('button');
+                redirectBtn.className = 'btn btn-warning';
+                redirectBtn.innerHTML = '🔗 Secure Redirect';
+                redirectBtn.onclick = () => loadWithMethod('redirect');
+                actionButtons.appendChild(redirectBtn);
             }
             
-            // Always show copy button
+            if (analysis.action === 'new_tab' && !analysis.immediate) {
+                const newTabBtn = document.createElement('button');
+                newTabBtn.className = 'btn btn-secondary';
+                newTabBtn.innerHTML = '↗️ Open New Tab';
+                newTabBtn.onclick = () => loadWithMethod('newtab');
+                actionButtons.appendChild(newTabBtn);
+            }
+            
+            if (analysis.action === 'iframe' || analysis.action === 'try_iframe') {
+                const iframeBtn = document.createElement('button');
+                iframeBtn.className = 'btn btn-success';
+                iframeBtn.innerHTML = '📱 Load in iFrame';
+                iframeBtn.onclick = () => loadWithMethod('iframe');
+                actionButtons.appendChild(iframeBtn);
+            }
+            
+            // Copy URL button
             const copyBtn = document.createElement('button');
             copyBtn.className = 'btn btn-secondary';
             copyBtn.innerHTML = '📋 Copy URL';
@@ -693,9 +862,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }
             
             state.currentUrl = targetUrl;
-            currentDomain.textContent = new URL(targetUrl).hostname;
+            currentDomain.textContent = extractDomain(targetUrl);
             
-            // Analyze URL first
+            // Check for immediate redirect (GitHub Codespaces)
+            if (targetUrl.includes('github.dev')) {
+                console.log('GitHub Codespaces detected - forcing immediate redirect');
+                startImmediateRedirect(targetUrl);
+                return;
+            }
+            
+            // Analyze URL first (for non-GitHub sites)
             await analyzeUrl(targetUrl);
             
             // Determine load method
@@ -704,14 +880,78 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 : loadMethodSelect.value;
             
             state.lastLoadMethod = method;
-            currentMethod.textContent = method.replace('_', ' ');
+            currentMethod.textContent = method.replace('_', ' ') || 'Auto-detect';
             
             // Execute load
             loadWithMethod(method);
         }
         
+        function startImmediateRedirect(url) {
+            console.log('Starting immediate redirect to:', url);
+            
+            // Hide iframe, show redirect message
+            browserFrame.style.display = 'none';
+            loading.style.display = 'none';
+            redirectMessage.style.display = 'block';
+            
+            // Start countdown
+            let countdown = 3;
+            countdownEl.textContent = countdown;
+            
+            const countdownInterval = setInterval(() => {
+                countdown--;
+                countdownEl.textContent = countdown;
+                
+                if (countdown <= 0) {
+                    clearInterval(countdownInterval);
+                    executeRedirect(url);
+                }
+            }, 1000);
+            
+            // Update UI
+            analysisStatus.textContent = 'REDIRECTING';
+            analysisStatus.className = 'status-badge status-danger';
+            
+            // Show redirect button
+            actionButtons.innerHTML = `
+                <button class="btn btn-immediate" onclick="executeRedirect('${url}')">
+                    🔥 Redirect Now
+                </button>
+                <button class="btn btn-secondary" onclick="cancelRedirect()">
+                    ✕ Cancel
+                </button>
+            `;
+        }
+        
+        function executeRedirect(url) {
+            console.log('Executing redirect to:', url);
+            window.location.href = `/redirect?url=${encodeURIComponent(url)}`;
+        }
+        
+        function forceImmediateRedirect() {
+            executeRedirect(state.currentUrl);
+        }
+        
+        function cancelRedirect() {
+            redirectMessage.style.display = 'none';
+            browserFrame.style.display = 'none';
+            loading.style.display = 'flex';
+            loadingText.textContent = 'Ready to browse';
+            
+            // Reset action buttons
+            if (state.currentAnalysis) {
+                updateActionButtons(state.currentAnalysis);
+            }
+        }
+        
         function loadWithMethod(method) {
             const url = state.currentUrl;
+            
+            // Special handling for GitHub Codespaces
+            if (url.includes('github.dev') && method !== 'redirect') {
+                console.log('Overriding method to redirect for GitHub Codespaces');
+                method = 'redirect';
+            }
             
             switch(method) {
                 case 'iframe':
@@ -721,7 +961,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     
                 case 'redirect':
                     // Use backend redirect endpoint
-                    window.location.href = `/redirect?url=${encodeURIComponent(url)}`;
+                    if (url.includes('github.dev')) {
+                        startImmediateRedirect(url);
+                    } else {
+                        window.location.href = `/redirect?url=${encodeURIComponent(url)}`;
+                    }
                     break;
                     
                 case 'newtab':
@@ -738,6 +982,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             loadingText.textContent = 'Loading in iFrame...';
             loading.style.display = 'flex';
             browserFrame.style.display = 'none';
+            redirectMessage.style.display = 'none';
             
             // Set iframe source with cache busting
             const timestamp = new Date().getTime();
@@ -748,6 +993,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             setTimeout(() => {
                 if (loading.style.display === 'flex') {
                     // If still loading after timeout, show fallback
+                    console.log('iFrame load timeout - site may be blocking');
                     showError('Site may be blocking iframe. Try redirect method.');
                     browserFrame.style.display = 'none';
                     loading.style.display = 'flex';
@@ -757,18 +1003,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }
         
         function handleIframeLoad() {
-            log('iFrame loaded successfully');
+            console.log('iFrame loaded successfully');
             loading.style.display = 'none';
             browserFrame.style.display = 'block';
-            analysisStatus.textContent = 'LOADED';
-            analysisStatus.className = 'status-badge status-success';
+            redirectMessage.style.display = 'none';
+            
+            if (state.currentAnalysis) {
+                analysisStatus.textContent = 'LOADED';
+                analysisStatus.className = 'status-badge status-success';
+            }
             
             // Start auto-refresh if enabled
             startAutoRefresh();
         }
         
         function handleIframeError() {
-            log('iFrame failed to load');
+            console.error('iFrame failed to load');
             showError('Site blocked iframe embedding. Use redirect or new tab.');
             analysisStatus.textContent = 'BLOCKED';
             analysisStatus.className = 'status-badge status-danger';
@@ -837,6 +1087,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             loadingText.textContent = message;
             loading.style.display = 'flex';
             browserFrame.style.display = 'none';
+            redirectMessage.style.display = 'none';
             
             // Show error in analysis card
             siteInfo.innerHTML = `<p style="color: #fca5a5;">${message}</p>`;
@@ -908,7 +1159,21 @@ def analyze_url():
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     
-    # Analyze URL
+    # Special handling for GitHub Codespaces
+    if 'github.dev' in url:
+        return jsonify({
+            'status': 'blocked',
+            'domain': 'github.dev',
+            'name': 'GitHub Codespaces',
+            'reason': 'Development environment requires direct browser access',
+            'alternative': 'Direct redirect required',
+            'category': 'development',
+            'action': 'redirect',
+            'immediate': True,
+            'priority': 10
+        })
+    
+    # Analyze URL for other sites
     analysis = SiteDetector.analyze_url(url)
     
     return jsonify(analysis)
@@ -925,7 +1190,11 @@ def redirect_url():
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     
-    # Return redirect HTML
+    # Special message for GitHub Codespaces
+    if 'github.dev' in url:
+        return SiteDetector.get_redirect_html(url, CONFIG['auto_redirect_delay'])
+    
+    # Return redirect HTML for other sites
     return SiteDetector.get_redirect_html(url, CONFIG['auto_redirect_delay'])
 
 @app.route('/direct/<path:url>')
@@ -968,42 +1237,76 @@ def status():
         'timestamp': datetime.now().isoformat()
     })
 
+# ==================== TEST ENDPOINTS ====================
+
+@app.route('/test')
+def test():
+    """Test endpoint to verify backend is working"""
+    return jsonify({
+        'status': 'ok',
+        'message': 'Universal Browser backend is working!',
+        'endpoints': {
+            '/': 'Main browser interface',
+            '/analyze?url=...': 'URL analysis',
+            '/redirect?url=...': 'Secure redirect',
+            '/status': 'Service status',
+            '/health': 'Health check'
+        },
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/debug-analyze')
+def debug_analyze():
+    """Debug analysis endpoint"""
+    url = request.args.get('url', 'https://example.com')
+    
+    return jsonify({
+        'status': 'debug',
+        'url': url,
+        'domain': 'example.com',
+        'action': 'iframe',
+        'timestamp': datetime.now().isoformat()
+    })
+
 # ==================== STARTUP ====================
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    
-    print(f"""
-    🌐 UNIVERSAL SMART BROWSER STARTING...
-    =========================================
-    
-    🚀 SMART FEATURES:
-    • Auto-detects blocked sites (Google, GitHub, etc.)
-    • Smart fallback to redirect/new tab
-    • 24/7 uptime with auto-ping
-    • Works on Render free tier
-    
-    📡 ENDPOINTS:
-    • Main Browser: http://localhost:{port}/
-    • URL Analysis: /analyze?url=...
-    • Secure Redirect: /redirect?url=...
-    • Status: /status
-    • Health: /health
-    
-    ⚙️ CONFIGURATION:
-    • Port: {port}
-    • Default URL: {CONFIG['default_url']}
-    • Auto-ping: Every {CONFIG['keep_alive_interval']//60} minutes
-    • iFrame Timeout: {CONFIG['iframe_timeout']} seconds
-    
-    =========================================
-    ✅ Service will handle ANY website smartly
-    """)
-    
-    # Run the app
-    app.run(
-        host='0.0.0.0',
-        port=port,
-        debug=False,
-        threaded=True
-    )
+# REMOVE THIS BLOCK FOR DEPLOYMENT:
+# if __name__ == '__main__':
+#     port = int(os.environ.get('PORT', 10000))
+#     
+#     print(f"""
+#     🌐 UNIVERSAL SMART BROWSER STARTING...
+#     =========================================
+#     
+#     🚀 SMART FEATURES:
+#     • Auto-detects blocked sites (Google, GitHub, etc.)
+#     • Special handling for GitHub Codespaces
+#     • Smart fallback to redirect/new tab
+#     • 24/7 uptime with auto-ping
+#     • Works on Render free tier
+#     
+#     📡 ENDPOINTS:
+#     • Main Browser: http://localhost:{port}/
+#     • URL Analysis: /analyze?url=...
+#     • Secure Redirect: /redirect?url=...
+#     • Status: /status
+#     • Health: /health
+#     • Test: /test
+#     
+#     ⚙️ CONFIGURATION:
+#     • Port: {port}
+#     • Default URL: {CONFIG['default_url']}
+#     • Auto-ping: Every {CONFIG['keep_alive_interval']//60} minutes
+#     • iFrame Timeout: {CONFIG['iframe_timeout']} seconds
+#     
+#     =========================================
+#     ✅ Service will handle ANY website smartly
+#     """)
+#     
+#     # Run the app
+#     app.run(
+#         host='0.0.0.0',
+#         port=port,
+#         debug=False,
+#         threaded=True
+#     )
