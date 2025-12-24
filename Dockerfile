@@ -1,14 +1,15 @@
 # 🚀 Buttery Smooth Browser - Render Compatible
+# FIXED VERSION: Package errors resolved
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install ALL dependencies in one layer
+# Install ALL dependencies in one layer - FIXED PACKAGE LIST
 RUN apt-get update && apt-get install -y \
     # X server with console access
     xvfb \
     xserver-xorg-video-dummy \
-    xserver-xorg-input-void \
+    xserver-xorg-input-evdev \
     # VNC server
     x11vnc \
     # Window manager
@@ -28,6 +29,12 @@ RUN apt-get update && apt-get install -y \
     curl \
     net-tools \
     dbus-x11 \
+    # Additional dependencies for Chrome
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
     # Clean
     && rm -rf /var/lib/apt/lists/*
 
@@ -132,14 +139,16 @@ RUN echo '#!/bin/bash' > /start.sh && \
     echo '  -notruecolor \\' >> /start.sh && \
     echo '  -cursor arrow &' >> /start.sh && \
     echo '' >> /start.sh && \
-    echo '# Start websockify on port 10000' >> /start.sh && \
     echo '# Create simple web directory for noVNC' >> /start.sh && \
-    echo 'mkdir -p /tmp/novnc' && \
-    echo 'echo "<html><body><h1>VNC Server Ready</h1><p>Connect via VNC client to port 5900</p></body></html>" > /tmp/novnc/index.html' && \
+    echo 'mkdir -p /tmp/novnc' >> /start.sh && \
+    echo 'echo "<html><body><h1>VNC Server Ready</h1><p>Connect via VNC client to port 5900</p></body></html>" > /tmp/novnc/index.html' >> /start.sh && \
+    echo '' >> /start.sh && \
+    echo '# Start websockify on port 10000' >> /start.sh && \
     echo 'websockify --web /tmp/novnc 10000 localhost:5900 &' >> /start.sh && \
     echo '' >> /start.sh && \
     echo 'echo "✅ Buttery Smooth Browser Ready!"' >> /start.sh && \
-    echo 'echo "🌐 VNC Port: 5900 (connect with VNC client)"' >> /start.sh && \
+    echo 'echo "🌐 Web Interface: http://[HOST]:10000/vnc.html"' >> /start.sh && \
+    echo 'echo "🔗 Direct VNC: port 5900 (no password)"' >> /start.sh && \
     echo 'echo "⚡ Chrome running with GPU acceleration"' >> /start.sh && \
     echo '' >> /start.sh && \
     echo '# Keep container running' >> /start.sh && \
