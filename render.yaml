@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: rdp-browser
+    name: fast-rdp
     env: docker
     plan: free
     dockerfilePath: Dockerfile
