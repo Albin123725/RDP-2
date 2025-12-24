@@ -1,9 +1,10 @@
 services:
   - type: web
-    name: xrdp-desktop
+    name: web-desktop
     env: docker
     dockerfilePath: ./Dockerfile
     plan: free
+    healthCheckPath: /
     envVars:
-      - key: PORT
-        value: 3389
+      - key: VNC_PASSWORD
+        generateValue: true
